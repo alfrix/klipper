@@ -105,7 +105,7 @@ class GCodeDispatch:
         self.mux_commands = {}
         self.gcode_help = {}
         # Register commands needed before config file is loaded
-        handlers = ['M110', 'M112', 'M115',
+        handlers = ['M108', 'M110', 'M112', 'M115',
                     'RESTART', 'FIRMWARE_RESTART', 'ECHO', 'STATUS', 'HELP']
         for cmd in handlers:
             func = getattr(self, 'cmd_' + cmd)
@@ -301,6 +301,12 @@ class GCodeDispatch:
                              % (key_param, key))
         values[key_param](gcmd)
     # Low-level G-Code commands that are needed before the config file is loaded
+    def cmd_M108(self, gcmd):
+        # Break and continue
+        gcmd.respond_info("Breaking due to M108")
+        # Temporary
+        self.printer.invoke_shutdown("Shutdown due to M108 command")
+        self.request_restart('firmware_restart')
     def cmd_M110(self, gcmd):
         # Set Current Line Number
         pass
@@ -394,6 +400,7 @@ class GCodeIO:
         if self.is_fileinput:
             self.printer.request_exit('error_exit')
     m112_r = re.compile('^(?:[nN][0-9]+)?\s*[mM]112(?:\s|$)')
+    m108_r = re.compile('^(?:[nN][0-9]+)?\s*[mM]108(?:\s|$)')
     def _process_data(self, eventtime):
         # Read input, separate by newline, and add to pending_commands
         try:
@@ -423,6 +430,9 @@ class GCodeIO:
                 for line in lines:
                     if self.m112_r.match(line) is not None:
                         self.gcode.cmd_M112(None)
+                    # Check for M108 (break and continue)
+                    if self.m108_r.match(line) is not None:
+                        self.gcode.cmd_M108(None)
             if self.is_processing_data:
                 if len(pending_commands) >= 20:
                     # Stop reading input
